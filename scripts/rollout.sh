@@ -48,24 +48,36 @@ EOF
   docker exec gateway nginx -s reload
 }
 
+wait_for_version() {
+  expected="$1"
+
+  for i in {1..20}; do
+    if response=$(curl -fsS http://localhost:8080/health) &&
+       [[ "$response" == *"\"version\":\"$expected\""* ]]; then
+      return 0
+    fi
+    sleep 1
+  done
+
+  echo "Gateway did not route to Version $expected; last response: ${response:-none}" >&2
+  return 1
+}
+
 # Initially route to Version A
 route_to app-a
-curl -fsS http://localhost:8080/health \
-  | grep -q '"version":"A"'
+wait_for_version A
 echo "Version A active"
 
 # Switch traffic to Version B
 route_to app-b
-curl -fsS http://localhost:8080/health \
-  | grep -q '"version":"B"'
+wait_for_version B
 echo "Version B active"
 
 # Rollback to Version A
 start=$(date +%s)
 
 route_to app-a
-curl -fsS http://localhost:8080/health \
-  | grep -q '"version":"A"'
+wait_for_version A
 
 elapsed=$(( $(date +%s) - start ))
 echo "Rollback successful in ${elapsed} seconds"
