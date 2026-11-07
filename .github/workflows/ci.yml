@@ -30,7 +30,7 @@ jobs:
         run: ruff check .
 
       - name: Unit tests
-        run: pytest -q
+        run: python -m pytest -q
 
       - name: Evaluation gate
         run: python eval_smoke.py

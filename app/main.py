@@ -1,5 +1,7 @@
 import os
+
 from fastapi import FastAPI
+
 from app.provider import generate_answer
 
 app = FastAPI()

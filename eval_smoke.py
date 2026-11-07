@@ -1,4 +1,5 @@
 from statistics import mean
+
 from app.provider import generate_answer
 
 questions = [
