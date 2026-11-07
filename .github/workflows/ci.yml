@@ -1,0 +1,78 @@
+
+name: GenAI Production Pipeline
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  packages: write
+
+jobs:
+  build-test-release:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Lint
+        run: ruff check .
+
+      - name: Unit tests
+        run: pytest -q
+
+      - name: Evaluation gate
+        run: python eval_smoke.py
+
+      - name: Build image
+        run: docker build -t genai-app:ci .
+
+      - name: Test container health
+        run: |
+          docker run -d --name app-test \
+            -p 8000:8000 genai-app:ci
+
+          for i in {1..20}; do
+            if curl -fsS http://localhost:8000/health; then
+              break
+            fi
+            sleep 1
+          done
+
+          curl -fsS http://localhost:8000/health
+
+      - name: Login to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Publish image with Git SHA
+        env:
+          REPOSITORY: ${{ github.repository }}
+          SHA: ${{ github.sha }}
+        run: |
+          IMAGE="ghcr.io/${REPOSITORY,,}:$SHA"
+          docker tag genai-app:ci "$IMAGE"
+          docker push "$IMAGE"
+          echo "Published: $IMAGE"
+
+      - name: Versioned rollout and rollback demo
+        run: |
+          docker build -t genai-app:tag-a \
+            --build-arg RELEASE_VERSION=A .
+          docker build -t genai-app:tag-b \
+            --build-arg RELEASE_VERSION=B .
+          bash scripts/rollout.sh
